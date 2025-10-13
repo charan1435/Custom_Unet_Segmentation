@@ -150,7 +150,7 @@ def load_voc_format_pairs(base_dir):
   # Get file name without extension 
   mask_basename = os.path.splitext(mask_filename)[0]  
 
-  #Try for different extensions 
+  #Try for different extensions  for identifying JPEG images with the same mask name 
   possible_extensions = ['.jpg','.jpeg','JPG','.JPEG','.PNG'] 
 
   image_path = None 
@@ -161,7 +161,7 @@ def load_voc_format_pairs(base_dir):
     break  
    
    if image_path:
-    valid_pairs.append((image_path,mask_path)) 
+    valid_pairs.append((image_path,mask_path)) # Create a mask and image tuple inside list , this will let us access both individually and together
     print(f"found pair for : {mask_basename}") 
 
    else:
@@ -180,7 +180,60 @@ def load_voc_format_pairs(base_dir):
  if len(valid_pairs) == 0 :
   raise ValueError("No valid pairs found") 
 
- return valid_pairs 
+ return valid_pairs   
+
+
+def load_pretrained_encoder(model, checkpoint_path , device=None): 
+ # Check for CUDA OR CPU
+ if device is None:
+  device = 'cuda' if torch.cuda.is_available() else 'cpu'
+  print(f"Auto detected devices {device}") 
+
+  print(f"Loading pretrained weights from : {checkpoint_path}") 
+ # Load the check point 
+ # Map_location: Handles GPU & CPU conversions automatically 
+ checkpoint= torch.load(checkpoint_path, map_location=device)  
+
+ # Extract model weights in checkpoint as they can have different formats 
+
+ if 'model_state_dict' in checkpoint:
+  pretrained_dict = checkpoint['model_state_dict'] 
+ else:
+  pretrained_dict = checkpoint 
+
+  model_dict = model.state_dict()  # Get the current models state 
+
+  # Filtering : compatible layers , skip incompatible ones 
+
+  filtered_dict = {} 
+  skipped = []
+
+  for k, v in pretrained_dict.items():
+   if k in model_dict: 
+    if 'outc' in k:
+     skipped.append(f"{k} (Final layer - will be randomly initialized)")
+     continue
+
+    # Check if the shape match 
+    if model_dict[k].shape == v.shape:
+     filtered_dict[k] = v 
+    else:
+     skipped.append(f"{k} (shape mismatch)")
+   else: 
+    skipped.append(f"{k} (not in new model)")  
+
+    # update model with pretrained weights  
+
+    model_dict.update(filtered_dict) 
+    model.load_state_dict(model_dict)
+
+
+    print(f"Transfer Learning Ready!")
+    print(f"Final layer : Randomly initialized for {model.n_classes} classes")
+ 
+ return  model
+
+ 
  
 
 
