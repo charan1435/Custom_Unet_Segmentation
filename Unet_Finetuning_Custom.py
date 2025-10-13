@@ -233,7 +233,64 @@ def load_pretrained_encoder(model, checkpoint_path , device=None):
  
  return  model
 
- 
+def calculate_class_weights(train_loader, device, num_classes, max_samples=100): 
+ print(f" \n Calculating class weights")   
+ class_counts = torch.zeros(num_classes, dtype=torch.float32)
+ # Initialize the counters for each class 
+ # count pixels for each class in training set 
+ sample_count=0 
+ for batch in tqdm(train_loader, desc="Counting pixels"):
+  if sample_count >= max_samples: 
+   break  
+
+  # Unpack batch  
+  # safely extract masks from batch  
+  if len(batch)  == 3: # checks if batch has 3 elements ( images, masks, paths)
+   _, masks, _ = batch  # _ tells what we dont need 
+  else: # If 2 paths are only there
+   _, masks = batch 
+
+  # Count pixels for each class 
+  for class_idx in range (num_classes): 
+   class_counts[class_idx]+= (masks==class_idx).sum().item()
+
+  sample_count += 1  
+
+ # calculate inverse frequency weights  
+ total_pixels = class_counts.sum()  
+
+ # Formula =  weight_i = total_pixels / (num_classes * count_i) 
+ # More pixels -> lower weights 
+ # Fewer pixels -> higher weight 
+
+ class_weights = total_pixels / (num_classes * class_counts) 
+
+ # cap extreme weight at 10 (prevent gradint explosion) 
+ class_weights = torch.clamp(class_weights, max=10.0) 
+
+ # Normalize so weights sum to num_classes  
+ class_weights = class_weights / class_weights.sum() * num_classes 
+
+ print(f"\n  Class Distribution ") 
+ for i in range (num_classes):
+  pixels = int(class_counts[i].item()) 
+  percentage = (class_counts[i] / total_pixels * 100).item()
+  weight = class_weights[i].item()
+  print(f"   Class {i:2d}: {pixels:10,} pixels ({percentage:5.2f}%) → weight: {weight:.3f}") 
+
+ return class_weights.to(device)
+
+
+
+
+
+
+
+   
+
+
+
+  
  
 
 
